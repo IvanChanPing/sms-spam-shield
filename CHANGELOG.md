@@ -1,0 +1,94 @@
+# Changelog
+
+All notable changes to SMS Spam Shield are logged here. Format loosely follows
+Keep-a-Changelog; timestamps are UTC.
+
+## [Unreleased]
+
+### 2026-07-03 — L1 AI layer: two independent AI backends (`android/spamshield-ai`)
+- New Android library module with the optional AI classifier layer — **two separate,
+  user-selectable backends** (not combined): `NanoAiClassifier` (on-device Gemini Nano via
+  ML Kit GenAI Prompt API `com.google.mlkit:genai-prompt:1.0.0-beta2` — private, no key, zero
+  app storage, Nano-capable devices only) and `CloudAiClassifier` (any OpenAI-compatible
+  `/chat/completions` endpoint — works on any phone, needs key+network, content leaves device,
+  opt-in). Shared `AiClassifier` interface + `AiVerdict` + `PoliticalSpamPrompt` (prompt encodes
+  the diverse-topic political/donation definition + an explicit never-flag list for FP safety +
+  tolerant JSON parsing). `classify()` returns null on any failure → caller falls back to the
+  heuristic, never treats null as spam. Cloud uses only java.net + org.json (no extra deps).
+- Gradle module scaffolding (AGP 8.5.2 / Kotlin 1.9.24 / compileSdk 34 / minSdk 26 / coroutines
+  1.8.1). Doc: `docs/AI_LAYER.md`.
+- STATUS: written against the documented APIs (surface read from the official ML Kit get-started,
+  not guessed). **Compile + on-device UNVERIFIED** — the build sandbox has no working Android
+  Gradle (system Gradle 4.4.1) and no Nano device. Residuals to confirm on-device are listed in
+  `docs/AI_LAYER.md` (non-streaming response accessor; a couple of import sub-packages).
+
+### 2026-07-03 — Evasion + link robustness (quick wins)
+- **Zero-width strip** in `normalize()`: drops invisible format chars (ZWSP/ZWNJ/ZWJ/
+  word-joiner/BOM/soft-hyphen, U+200B–U+200F, U+2060–U+2064, U+FEFF, U+00AD, …) before
+  NFKC, so keyword evasion like `d‍o‌n​a⁠t﻿e` no longer slips past the lexicons. (Verified
+  NFKC alone does NOT remove these.)
+- **Scheme-less tracking links**: `has_tracking_link()` now scans raw whitespace tokens,
+  catching the common SMS form `www.x.com/07011t1s2/lKBgJW` (previously only `http://`
+  links were seen). Still excludes hyphenated slugs (e.g. `eventbrite.com/e/sunset-yoga`).
+- 2 tests; `cargo test` → 54 pass, 0 warnings; no regressions.
+
+### 2026-07-03 — Trusted-sender allowlist (anti-FP)
+- **`HeuristicConfig.trusted_senders`** (new, default empty) + `sender_is_trusted()` /
+  `digits_match()` in `heuristic.rs`: a host-supplied sender is never flagged as political
+  spam regardless of content (mirrors `is_known_contact`). Matches case-insensitively for
+  alphanumeric A2P sender IDs (e.g. "Eventbrite") or by digits for short codes / phone
+  numbers (tolerant of a leading country code; short codes match exactly). Exempts the
+  heuristic ONLY — phishing feed matches (L2/L3) still apply, so a spoofed/compromised
+  trusted sender pushing a known-bad link is still caught. Closes the opted-in campaign-
+  fundraiser-event-reminder false-positive edge. 4 tests; `cargo test` → 52 pass, 0 warnings.
+
+### 2026-07-03 — L0 political-spam heuristic (step 2)
+- **`engine/src/spam/heuristic.rs`** (new) — `classify_political(text, sender,
+  is_known_contact, &HeuristicConfig) -> Option<Verdict>`: the flagship content-aware
+  detector for unsolicited political campaign/fundraising texts (the rotating-number,
+  "STOP-doesn't-stop-it" class that no reputation DB can catch). General signals only —
+  fundraising + political/GOTV lexicons, survey CTA, FCC opt-out keywords (gate), "paid
+  for by", per-recipient tracking shortlink, styled-Unicode evasion, ActBlue/WinRed/NGP
+  fundraising domains, unknown-10-digit-P2P sender. NFKC-normalizes first to defeat
+  "𝗺𝗮𝘁𝗵-𝗯𝗼𝗹𝗱" keyword evasion. Conservative decision rule (one weak signal never flags).
+  Grounded in verified FCC rules + political-texting research + real-world sample
+  messages — the samples are TEST FIXTURES only; the matcher hardcodes no spammer
+  domain/number. Added dep `unicode-normalization 0.1`.
+- `cargo test` → **11 heuristic tests + 23 reused = all pass**: 3 real samples flag via
+  general signals; 4 clean controls (2FA / delivery / retail / personal) stay clean.
+- Known gap (logged): tracking-link detection only sees `http://` links, not the common
+  scheme-less `www.x.com/code`. Not yet wired into the FFI `spam_classify`. Status:
+  host-tested; on-device UNVERIFIED.
+
+### 2026-07-03 — False-positive hardening (precision-first)
+- Reworked the L0 decision rule to flag ONLY on a fundraising-domain link OR ≥2
+  independent STRONG signals {fundraising word, political, styled-Unicode, "paid for
+  by"}. A bare money amount, opt-out wording, "reply YES", a shortlink, and an unknown
+  sender are now boosters/reasons only — they never trigger a flag. Fixes two FP holes
+  (retail "$20 off"; news link + one political word). Added realistic clean near-miss
+  tests (2FA, appointment, bank alert, charity receipt, news link, contest, RSVP, retail;
+  financial short-code notices: bank balance, Cash App payment, fraud/suspicious-activity
+  alert, low balance; Eventbrite event reminders incl. a civic-named event) — 17 clean-
+  control tests + 6 spam/recall. `cargo test` → 48 pass, 0 warnings.
+- Trade-offs (intentional, per zero-FP priority): a pure GOTV text with no money/party/
+  styled/tracking signal is not flagged; and an opted-in *campaign-fundraiser event*
+  reminder (fundraising + political = 2 strong) would flag. Planned fix for legit bulk
+  senders: a host-configurable trusted-sender allowlist (never flag Eventbrite / your
+  bank / your subscriptions), alongside `is_known_contact`.
+
+### 2026-07-03 — Project bootstrap + engine extraction (step 1)
+- **Scoping + research** — decided the project: open-source (Apache-2.0) drop-in SMS
+  spam-flagging library; flagship target = political spam; a compact, self-contained Rust
+  engine core; pluggable local AI with **no bundled model** (on-device Gemini Nano via ML
+  Kit GenAI, or developer cloud, or none). Verified local-AI feasibility (ONNX/Rust-on-
+  Android, Gemini Nano is OS-owned = zero app storage, flagship-only today). See the README
+  for the design.
+- **`engine/` crate created** (`spam_shield` 0.1.0) — a standalone, self-contained UniFFI
+  crate providing the offline detection layers (`extract`/`store`/`feeds`/`online`/`engine`/
+  `mod`), with no messaging-app coupling.
+  New `Cargo.toml` (minimal deps: once_cell, tokio, reqwest+rustls, url, serde/serde_json,
+  log, uniffi 0.28) + `src/lib.rs` (`uniffi::setup_scaffolding!()` + `pub mod spam`).
+  FFI surface unchanged: `spam_configure` / `spam_refresh_feeds` / `spam_classify` /
+  `spam_status`. **`cargo test` → 23/23 host tests pass.** No Android build yet (no NDK
+  run here); on-device classify UNVERIFIED.
+- Added `LICENSE` (Apache-2.0, canonical text), `README.md`, `.gitignore`, this changelog.

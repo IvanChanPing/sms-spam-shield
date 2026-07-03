@@ -1,0 +1,22 @@
+# Rust
+engine/target/
+**/*.rs.bk
+Cargo.lock
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/*/build/
+android/local.properties
+*.iml
+.idea/
+
+# Generated UniFFI bindings staging
+engine/generated/
+
+# OS
+.DS_Store
+
+# Internal working docs — kept local, not published
+docs/SPAM_SHIELD_JOURNAL.md
+docs/ARCHITECTURE_SPEC.md

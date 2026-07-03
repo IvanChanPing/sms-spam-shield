@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- spamshield-ai library manifest. Intentionally minimal: the library declares NO
+     permissions. The HOST app must declare INTERNET itself IF it uses the CloudAiClassifier
+     (the on-device NanoAiClassifier needs no permission). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

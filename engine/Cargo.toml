@@ -1,0 +1,67 @@
+[package]
+name = "spam_shield"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.95"
+description = "On-device SMS scam/spam classification engine (feed-matching + political-spam heuristics + optional online reputation). UniFFI-bridged for an Android AAR drop-in. Core of SMS Spam Shield."
+license = "Apache-2.0"
+
+# cdylib → the JNI-loadable .so (System.loadLibrary). staticlib/rlib keep the
+# crate host-testable without an Android build.
+[lib]
+name = "spam_shield"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+# UniFFI 0.28 bindings generator (regenerates the Kotlin glue on demand):
+#   cargo run --bin uniffi-bindgen -- generate --library <path/to/.so> --language kotlin --out-dir <dir>
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[dependencies]
+# Lazy process-wide engine state.
+once_cell = "1"
+
+# Unicode NFKC normalization — folds "mathematical bold/italic" styled glyphs
+# (U+1D400–U+1D7FF) + fullwidth/compatibility chars back to plain ASCII so the
+# political-spam heuristic can't be evaded by writing "𝗱𝗼𝗻𝗮𝘁𝗲" instead of "donate".
+unicode-normalization = "0.1"
+
+# Async runtime for the two async FFI fns (refresh_feeds / classify online layer).
+tokio = { version = "1", features = ["full"] }
+
+# HTTP for feed download + online reputation lookups. rustls (not native-tls) to
+# avoid system OpenSSL on the Android aarch64 cross-compile.
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "gzip"] }
+url = "2"
+
+# Indicator cache (JSON) round-trip.
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+
+# logcat surface (via android_logger on-device).
+log = "0.4"
+
+# UniFFI: .so JNI exports + Kotlin glue from the proc-macro scaffolding.
+uniffi = { version = "0.28", features = ["build", "cli", "tokio"] }
+
+# Android-only logger glue so log::info!() reaches logcat.
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.14"
+jni            = "0.21"
+
+[build-dependencies]
+uniffi = { version = "0.28", features = ["build"] }
+
+[features]
+default = []
+
+# Size-optimized shipped Android .so (bitdrift Rust-mobile-size guidance):
+# opt-level=s + fat LTO + panic=abort + 1 codegen unit + strip.
+[profile.release]
+opt-level     = "s"
+lto           = "fat"
+codegen-units = 1
+panic         = "abort"
+strip         = "debuginfo"
+incremental   = false
