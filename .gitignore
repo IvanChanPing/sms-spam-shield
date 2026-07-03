@@ -20,3 +20,6 @@ engine/generated/
 # Internal working docs — kept local, not published
 docs/SPAM_SHIELD_JOURNAL.md
 docs/ARCHITECTURE_SPEC.md
+
+# Test corpus data (fetched, not vendored — see engine/tests/data/README.md)
+engine/tests/data/SMSSpamCollection

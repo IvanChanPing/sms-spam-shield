@@ -5,6 +5,16 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-03 — Real-corpus validation (UCI SMS Spam Collection)
+- Added `engine/tests/corpus.rs` — runs the L0 political-spam heuristic over the full **UCI
+  SMS Spam Collection** (5,574 real labelled SMS: 4,827 ham + 747 spam). **Result: 0 false
+  positives on 4,827 real ham messages (0.00%)** — hard-validates the zero-false-positive
+  priority against thousands of real legitimate texts (not synthetic). Flagged 0/747 general
+  spam, which is EXPECTED/correct: UCI is 2005-era prize/ringtone spam, not political, and
+  this detector is political-specific — so the corpus validates the false-positive side but
+  not political recall. Dataset is fetched, not vendored (see `engine/tests/data/README.md`;
+  test skips if absent). © Almeida & Gómez Hidalgo, redistributable with citation.
+
 ### 2026-07-03 — L1 AI layer: two independent AI backends (`android/spamshield-ai`)
 - New Android library module with the optional AI classifier layer — **two separate,
   user-selectable backends** (not combined): `NanoAiClassifier` (on-device Gemini Nano via
