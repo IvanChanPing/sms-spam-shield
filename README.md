@@ -69,14 +69,13 @@ and the host decides (badge / spam folder / silence / auto-hide). The optional o
 | `docs/` | `AI_LAYER.md`, `CROWD_FEED_DESIGN.md`, architecture spec. |
 
 ## Status
-Early development, host-tested. The Rust `engine/` (L0 heuristic + crowd feed + feeds) passes
-**67 unit + 7 real-corpus tests** with **0 false positives across ~105k real messages**; the FFI
-wires crowd-match + L0 + feeds into `spam_classify`. The Kotlin `SpamShield` facade + refresh
-worker are written and their **wiring is verified against the generated UniFFI bindings** (source
-compiles/lines up); the **AAR build + on-device run** are pending (not needed to trust the detector).
-The L1 AI layer is written but on-device UNVERIFIED (Nano needs a Nano-capable phone). The crowd-feed
-**server** is designed
-(`docs/CROWD_FEED_DESIGN.md`) but not built. Not yet published.
+Early development. The Rust `engine/` (L0 political-spam heuristic, crowd feed, threat feeds) passes
+**68 unit + 7 real-corpus tests** with **0 false positives across ~105k real messages**, and the FFI
+exposes `spam_configure` / `spam_classify` / `spam_report_spam` / `spam_refresh_*` / `spam_status`. The
+Kotlin `SpamShield` facade and self-starting refresh worker sit on top of the generated UniFFI bindings.
+The crowd-feed server is a GitHub-Actions consensus broker (`server/`, `docs/CROWD_FEED_DESIGN.md`). The
+optional L1 AI layer ships two backends — on-device Gemini Nano, or any OpenAI-compatible cloud model.
+Not yet published to a package registry.
 
 ## License
 [Apache-2.0](LICENSE).
