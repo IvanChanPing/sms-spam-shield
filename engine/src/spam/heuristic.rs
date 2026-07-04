@@ -239,7 +239,7 @@ impl Signals {
 /// Normalize text for keyword matching: NFKC-fold (styled Unicode → ASCII), then
 /// lowercase. Returns the normalized text and whether the ORIGINAL contained styled
 /// "mathematical alphanumeric" glyphs (U+1D400–U+1D7FF) — itself a spam signal.
-fn normalize(text: &str) -> (String, bool) {
+pub(crate) fn normalize(text: &str) -> (String, bool) {
     let styled = text.chars().any(|c| ('\u{1D400}'..='\u{1D7FF}').contains(&c));
     // Strip zero-width / invisible format characters FIRST. Spammers insert them
     // between letters ("d\u{200b}o\u{200c}n\u{200d}a\u{2060}t\u{feff}e") to defeat

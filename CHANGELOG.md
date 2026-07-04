@@ -5,6 +5,24 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-04 — Wire crowd feed + L0 heuristic into the FFI; styled-fp hardening
+- **FFI wiring (`spam/mod.rs`):** `SpamConfig` gains `crowd_enabled/crowd_feed_url/
+  crowd_report_url/crowd_auth_header_name/crowd_auth_header_value`; `spam_configure` builds the
+  `CrowdConfig` and warms the crowd cache (`<cache>.crowd.json`). `spam_classify` now takes an
+  `is_known_contact` flag and runs three fast offline signals before any network — **crowd-feed
+  match → L0 political heuristic → threat-feed match** — first hit wins. This also fixes a known
+  gap: the flagship `classify_political` heuristic was host-tested but had never been called by the
+  FFI; it is now wired in (default HeuristicConfig; host-supplied trusted senders can be threaded
+  later). New FFI fns `spam_report_spam(text,sender)` (builds+uploads a fingerprint, raw text
+  never leaves the device) and `spam_refresh_crowd()` (downloads+installs+persists the feed;
+  failure keeps the old feed). A saved contact is never flagged.
+- **Fingerprint hardening:** `content_fingerprint` now normalizes via the heuristic's NFKC +
+  zero-width stripper, so a styled-Unicode (`𝗱𝗼𝗻𝗮𝘁𝗲`) or zero-width-obfuscated copy of a campaign
+  fingerprints identically to the plain copy (crowd feed catches styled rotations). New test
+  `fingerprint_defeats_styled_and_zerowidth_evasion`; `heuristic::normalize` made `pub(crate)`.
+- `cargo test` → **67 lib + 7 corpus pass, 0 warnings**; build clean. Live client↔server crowd
+  exchange remains UNVERIFIED (no server in this env); the data model + wiring are host-tested.
+
 ### 2026-07-04 — Crowd-feed client scaffolding (`engine/src/spam/crowd.rs`)
 - New self-contained module for an OPT-IN crowd-sourced spam feed — the structural answer to
   rotating numbers (a campaign only has to be caught ONCE by anyone, then every app matches it).

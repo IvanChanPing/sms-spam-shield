@@ -178,7 +178,10 @@ const GREETINGS: &[&str] = &["hi", "hey", "hello", "dear", "hi!", "hey!"];
 /// "Hi <name>," greeting; strip punctuation; collapse whitespace. The same campaign sent to
 /// different people from different numbers with different links normalizes to the SAME string.
 pub fn normalize_for_fingerprint(text: &str) -> String {
-    let lower = text.to_lowercase();
+    // Base = the heuristic's normalizer: NFKC-folds styled Unicode (𝗱𝗼𝗻𝗮𝘁𝗲 → donate),
+    // strips zero-width/invisible chars, and lowercases — so a styled or zero-width-obfuscated
+    // copy of a campaign fingerprints the SAME as a plain copy (defeats that evasion too).
+    let lower = super::heuristic::normalize(text).0;
     let raw: Vec<&str> = lower.split_whitespace().collect();
     let mut out: Vec<String> = Vec::with_capacity(raw.len());
 
@@ -328,6 +331,20 @@ mod tests {
             content_fingerprint(a),
             content_fingerprint(b),
             "same campaign, different name/number/link → same fingerprint"
+        );
+    }
+
+    #[test]
+    fn fingerprint_defeats_styled_and_zerowidth_evasion() {
+        // A styled-Unicode + zero-width-obfuscated copy of a campaign must fingerprint the
+        // SAME as the plain copy, or the crowd feed would miss the styled rotation.
+        let plain = "Please donate $25 now to flip the Senate before the deadline";
+        let styled = "Please \u{1D5F1}\u{1D5FC}\u{1D5FB}\u{1D5EE}\u{1D601}\u{1D5F2} $\u{1D7EE}\u{1D7F1} \
+                      n\u{200b}o\u{200c}w to flip the Senate before the deadline";
+        assert_eq!(
+            content_fingerprint(plain),
+            content_fingerprint(styled),
+            "styled/zero-width copy must fingerprint the same as plain"
         );
     }
 
