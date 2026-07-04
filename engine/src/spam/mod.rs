@@ -28,6 +28,7 @@
 //!   a real incoming SMS are NOT verified here (no device/NDK in this env) — see the
 //!   device test script in docs/SCAM_SPAM_PROTECTION_PLAN.md.
 
+pub mod crowd;
 pub mod engine;
 pub mod extract;
 pub mod feeds;

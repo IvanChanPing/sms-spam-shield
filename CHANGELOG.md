@@ -5,6 +5,27 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-04 — Crowd-feed client scaffolding (`engine/src/spam/crowd.rs`)
+- New self-contained module for an OPT-IN crowd-sourced spam feed — the structural answer to
+  rotating numbers (a campaign only has to be caught ONCE by anyone, then every app matches it).
+  - **Rotation-proof `content_fingerprint`**: normalizes the body (drops the greeting, links,
+    opaque per-recipient codes / long digit runs, `<PLACEHOLDER>` tokens; strips punctuation)
+    then FNV-1a hashes it — so the SAME campaign to different people, from different numbers,
+    with different tracking links yields the SAME fingerprint (proven by `fingerprint_is_rotation_proof`).
+    Never uploads raw text. Keeps the **sender number** as a separate field (per the product
+    decision) as a bonus signal — matching keys on the content fp, so a rotated number never
+    breaks the match.
+  - `CrowdFeedStore` (JSON, load/save, O(1) set match) + `match_feed` (Spam on content hit,
+    Suspicious on number-only hit) + `build_report`.
+  - **Pluggable transport** `CrowdConfig{feed_url, report_url, auth_header_name/value}` +
+    `fetch_feed`/`submit_report` (reqwest) — an SMS provider points it at their OWN server and
+    adds an API-key/attestation header if they want. Anti-poisoning (server re-classify +
+    N-reporter consensus + optional Play Integrity/App Attest) lives SERVER-side, not in the
+    client — deliberately light here because poisoning a political-spam fp feed has little payoff.
+  - 8 host tests (rotation-proof fp, content/number match, JSON round-trip, config gates,
+    placeholder stripping) — `cargo test` → 66 passed. NOT yet wired into the FFI (`SpamConfig`/
+    `spam_classify`/a `spam_report_spam` fn) — thin next step; live server exchange UNVERIFIED.
+
 ### 2026-07-04 — BASIC-script recall tune against the confirmed set (FP-safe)
 - Used the 26-message LLM-confirmed political set (Haiku AND local gemma3 independently
   agreed on 26/175 — cross-validated) to raise L0 recall the disciplined way: broadened the
