@@ -35,13 +35,13 @@ import uniffi.spam_shield.spamReportSpam
  * THREADING: [classify]/[report]/[refreshNow] are `suspend` (they may touch disk/network) — call
  * from a coroutine on a background dispatcher. [configure] is cheap/sync.
  *
- * STATUS: written against the UniFFI 0.28 Kotlin codegen for this crate. COMPILE-UNVERIFIED here
- * (no Android/Gradle build env in the sandbox). Residuals to confirm when the bindings are
- * generated (`uniffi-bindgen … --language kotlin`): the exact generated package
- * (`uniffi.spam_shield`), the enum entry spelling of `SpamLevel`, and that `spamClassify`/
- * `spamReportSpam`/`spamRefreshFeeds`/`spamRefreshCrowd` are emitted as `suspend` funs (they are
- * `#[uniffi::export(async_runtime = "tokio")]`). The `.so` (built via cargo-ndk) + the JNA
- * runtime must be on the app classpath.
+ * STATUS: source-level wiring VERIFIED (2026-07-04) by generating the real bindings
+ * (`cargo run --bin uniffi-bindgen -- generate --library libspam_shield.so --language kotlin`)
+ * and reading them: package `uniffi.spam_shield`, top-level funcs, `SpamLevel { CLEAN, SUSPICIOUS,
+ * SPAM, SCAM }`, the 15 camelCased `SpamConfig` fields, `SpamVerdict{score: UByte, matchedSource:
+ * String?}`, and `suspend fun spamClassify(text, sender, isKnownContact)` / `spamReportSpam` /
+ * `spamRefreshFeeds` / `spamRefreshCrowd` all match this facade. NOT yet verified: the Gradle/AAR
+ * build packaging + on-device runtime (needs the `.so` via cargo-ndk + JNA on the app classpath).
  */
 object SpamShield {
 

@@ -5,6 +5,20 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-04 — Verify Kotlin facade wiring against the real generated bindings
+- Generated the actual UniFFI Kotlin bindings (`cargo run --bin uniffi-bindgen -- generate
+  --library target/debug/libspam_shield.so --language kotlin`) and read them to confirm
+  `SpamShield.kt` compiles/lines up — no device/AAR build needed for this. All facade
+  assumptions match the generated code: package `uniffi.spam_shield`; top-level funcs;
+  `suspend fun spamClassify(text, sender, isKnownContact): SpamVerdict` + suspend
+  `spamReportSpam`/`spamRefreshFeeds`/`spamRefreshCrowd`; sync `spamConfigure`/`spamStatus`;
+  15 camelCased `SpamConfig` fields; `SpamVerdict{score: UByte, matchedSource: String?}`;
+  `SpamLevel { CLEAN, SUSPICIOUS, SPAM, SCAM }`; `SpamFeedKind { URLS, HOSTS }`;
+  `SpamRefreshResult.ok`. Corrected the facade header (residuals RESOLVED, not "to confirm").
+  Still unverified (would need a real build/run, not necessary to trust the detector): Gradle/AAR
+  packaging + on-device runtime. Also corrected the earlier wrong "no Android build env" claim —
+  the box has a full SDK at `/opt/android-sdk` (NDK/build-tools/adb/emulator) + cargo-ndk.
+
 ### 2026-07-04 — Public Kotlin `SpamShield` facade + drop-in docs + crowd-feed design
 - **Core Android module (`android/spamshield/`, compile-UNVERIFIED — no Android env here):**
   - `SpamShield.kt` — the single public entry point (clean Kotlin facade over the UniFFI
