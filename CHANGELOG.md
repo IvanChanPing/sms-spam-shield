@@ -5,6 +5,18 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-04 — Political-ENGAGEMENT signal (polls/petitions, not just donations)
+- Added an `ENGAGEMENT_CTA` signal (sign-our-letter / petition / "who will you vote for" /
+  take-our-poll / pledge-to-vote) as a strong category, so political spam that asks for
+  ENGAGEMENT rather than money now flags (political + engagement = 2 signals). Kept
+  political-specific so a "vote for your favorite flavor, reply to enter" contest and plain
+  appointment/RSVP texts stay clean. NOTE: hardcoding the test sample's "-Titus" tag was
+  removed (anti-cheat) — the Titus poll is caught by GENERAL signals ("plan to vote for" +
+  Democrat/Republican).
+- Result: ALL 6 confirmed real user samples now flag (4 fundraisers + poll + petition);
+  **false positives still 0 across ~58,000 real ham**; corpus political catches 14 → 17;
+  58 unit + 3 corpus tests green; no regressions.
+
 ### 2026-07-03 — Large-corpus baseline + name-based recall tune (FP-safe)
 - Added `general_smishing_corpus_baseline` + `political_recall_estimate` tests over a
   **~84,863-message** consolidated general-spam/smishing corpus (GitHub

@@ -133,11 +133,25 @@ const OPTOUT: &[&str] = &[
     "opt out", "unsubscribe", "reply end", "reply cancel", "reply revoke",
 ];
 
+/// Political-ENGAGEMENT call-to-action (petition / poll / survey / pledge). This is the
+/// non-fundraising half of political spam — "who will you vote for", "sign our letter",
+/// "take our poll" — which a donation-only rule misses. Kept POLITICAL-specific (not bare
+/// "vote"/"survey") so it flags ONLY when combined with the political signal, keeping a
+/// "vote for your favorite flavor, reply to enter" contest or a plain appointment clean.
+const ENGAGEMENT_CTA: &[&str] = &[
+    "sign our letter", "sign our petition", "sign the petition", "sign this petition",
+    "add your name", "pledge to vote", "pledge your vote", "commit to vote",
+    "who will you vote", "who do you plan to vote", "plan to vote for", "how will you vote",
+    "take our poll", "take the poll", "our official poll", "official poll", "quick poll",
+    "take our survey", "official survey",
+];
+
 /// Result of running the heuristic (internal; converted to a `Verdict`).
 struct Signals {
     fundraising: bool,
     money: bool,
     political: bool,
+    engagement: bool,
     reply_yn: bool,
     tracking_link: bool,
     styled: bool,
@@ -156,10 +170,16 @@ impl Signals {
         // EXCLUDED here (they are boosters/reasons) so that a single ambiguous cue
         // — the kind that appears in legit 2FA / appointment / retail / news / bank
         // / charity-receipt texts — can never on its own flag a message.
-        [self.fundraising, self.political, self.styled, self.paid_by]
-            .iter()
-            .filter(|b| **b)
-            .count() as u32
+        [
+            self.fundraising,
+            self.political,
+            self.engagement,
+            self.styled,
+            self.paid_by,
+        ]
+        .iter()
+        .filter(|b| **b)
+        .count() as u32
     }
 
     fn reasons(&self) -> Vec<String> {
@@ -368,6 +388,7 @@ pub fn classify_political(
         fundraising: any_phrase(&norm, FUNDRAISING),
         money: money_ask(&norm),
         political: any_phrase(&norm, POLITICAL),
+        engagement: any_phrase(&norm, ENGAGEMENT_CTA),
         reply_yn: any_phrase(&norm, REPLY_YN),
         tracking_link: has_tracking_link(text),
         styled,
@@ -802,6 +823,35 @@ mod tests {
     //      ONE signal, so it can NEVER flag on its own — texting a friend about Trump /
     //      Biden / Pelosi is not spam. It flags only WITH a second strong signal (a real
     //      fundraising ask). Proven here so a future lexicon change can't regress it. ----
+
+    #[test]
+    fn user_real_samples_report() {
+        // Real user-supplied political texts (2026-07-04). Measurement/report — prints what
+        // each does so we can see hits vs misses. Run: cargo test user_real_samples -- --nocapture
+        let c = cfg();
+        let samples: &[(&str, &str)] = &[
+            ("Sandy Hook (styled fundraiser)",
+             "It's Nicole from Sandy Hook Promise. That's why we set a goal to raise $25,000 before midnight tomorrow. \u{1D5EA}\u{1D5F6}\u{1D5F9}\u{1D5F9} \u{1D606}\u{1D5FC}\u{1D602} \u{1D5F1}\u{1D5FC}\u{1D5FB}\u{1D5EE}\u{1D601}\u{1D5F2} $\u{1D7EE}\u{1D7F1} now? www.shp-hlp.com/07011t1s2/lKBgJW\n\nText STOP to unsubscribe"),
+            ("DCCC (styled fundraiser)",
+             "The DCCC unveiled these 12 districts as some of our BEST opportunities to DEFEAT Republicans at the ballot box and TAKE BACK the Majority. Rush a 400%-MATCHED $25 gift RIGHT NOW to help us secure Democratic Majorities! www.dcccus.com/07032/V8UDpJ\n\nstop2end"),
+            ("Let America Vote (styled fundraiser)",
+             "This Amendment would change EVERYTHING. It would prevent Super PACs and Dark Money donors from flooding our elections. If you're a good Democrat, please give $20 NOW to help us hit our goal: www.vote-lav.com/07031/r3dBnv\n\nLet America Vote\n\nText STOP to unsubscribe"),
+            ("Titus poll (NO donation ask)",
+             "for whom do you plan to vote for US House in November?\nA. Democrat\nB. Republican\nC. Other/Unsure\n-Titus Surveys\nStop to end"),
+            ("DefendDemocracyNow petition (NO donation ask)",
+             "USPS on the verge of CAVING to Trump! Sign our letter telling them to protect Vote-by-Mail >> ddn-pac.com/06301t1s2/DSLrFn\n\nDefendDemocracyNow\n\nstop2end"),
+            ("Ossoff ActBlue fundraiser",
+             "Jon Ossoff here: Can you rush a contribution, of any amount that works for you, to my reelection campaign before our critical end-of-quarter fundraising deadline? contribute today: https://secure.actblue.com/donate/ossoffads26?amount=30\n\nText STOP to unsubscribe"),
+        ];
+        eprintln!("\n===== USER REAL SAMPLES =====");
+        for (name, body) in samples {
+            match classify_political(body, P2P, false, &c) {
+                Some(v) => eprintln!("  FLAG [{:?} {}] {name}", v.level, v.score),
+                None => eprintln!("  MISS  ------     {name}"),
+            }
+        }
+        eprintln!("=============================\n");
+    }
 
     #[test]
     fn figure_name_alone_is_clean() {
