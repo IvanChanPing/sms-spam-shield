@@ -108,6 +108,15 @@ const POLITICAL: &[&str] = &[
     "amendment", "super pac", "dark money", "citizens united", "flip the",
     "take back the majority", "the majority", "your district", "your rep",
     "representative", "senator", "petition", "endorse", "polls", "midterm",
+    // Name-based political markers — figures / movements / committees. This is the
+    // recall gap the UCI + combined-corpus baseline surfaced: name-based fundraising
+    // spam ("Trump … please contribute", "Speaker Pelosi …") slipped through because
+    // the lexicon had only generic terms. Short names get a word-boundary check in
+    // any_phrase (so "trump" ≠ "trumpet", "maga" ≠ "magazine"), and the ≥2-strong
+    // rule means a name alone never flags (it needs a fundraising signal too).
+    "trump", "biden", "kamala", "pelosi", "obama", "desantis", "newsom", "fetterman",
+    "maga", "patriot", "2nd amendment", "second amendment", "stop the steal",
+    "make america", "nrcc", "nrsc", "dccc", "dscc", "actblue", "winred",
 ];
 
 /// Survey / confirmation call-to-action typical of P2P political texts.
@@ -787,5 +796,51 @@ mod tests {
         assert!(!has_tracking_link("tickets at eventbrite.com/e/sunset-yoga-tickets"));
         // a plain domain with no path is not a tracking link
         assert!(!has_tracking_link("visit ourstore.com for deals"));
+    }
+
+    // ---- Figure-name false-positive guard (user's #1 rule): a political NAME is only
+    //      ONE signal, so it can NEVER flag on its own — texting a friend about Trump /
+    //      Biden / Pelosi is not spam. It flags only WITH a second strong signal (a real
+    //      fundraising ask). Proven here so a future lexicon change can't regress it. ----
+
+    #[test]
+    fn figure_name_alone_is_clean() {
+        for body in [
+            "Did you watch Donald Trump's speech last night? Wild stuff lol",
+            "Pelosi and Biden are all over the news today, what a mess",
+            "my history essay is on Obama and the 2008 election, due friday",
+            "the Patriots game was insane, did you see that catch",
+            "kamala was on SNL haha",
+        ] {
+            assert!(
+                classify_political(body, "+15551234567", false, &cfg()).is_none(),
+                "figure name alone must not flag: {body:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn figure_name_plus_casual_money_is_clean() {
+        // A name + a dollar amount is still only ONE strong signal (money is a booster).
+        let v = classify_political(
+            "Trump rally was nuts. wanna grab $20 pizza after work?",
+            "+15551234567",
+            false,
+            &cfg(),
+        );
+        assert!(v.is_none(), "name + casual money must not flag: {v:?}");
+    }
+
+    #[test]
+    fn figure_name_plus_fundraising_is_spam() {
+        // Name (political) + a real donation ask (fundraising) = 2 strong signals → flag.
+        let v = classify_political(
+            "Chip in $25 now to help President Trump win! Reply STOP to opt out.",
+            P2P,
+            false,
+            &cfg(),
+        )
+        .expect("should flag");
+        assert_eq!(v.level, SpamLevel::Spam);
     }
 }

@@ -5,6 +5,27 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-03 — Large-corpus baseline + name-based recall tune (FP-safe)
+- Added `general_smishing_corpus_baseline` + `political_recall_estimate` tests over a
+  **~84,863-message** consolidated general-spam/smishing corpus (GitHub
+  `shaghayegh-hp/Smishing_Dataset`; fetched, not vendored). Combined with UCI, the detector
+  now has **0 false positives across ~58,000 real ham messages**.
+- **Recall tune:** the baseline surfaced that name-based political fundraising spam
+  ("Trump … please contribute", "Speaker Pelosi …") slipped through because the political
+  lexicon had only generic terms. Added US political figures / movements / committees
+  (Trump/Biden/Pelosi/Kamala/MAGA/Patriot/NRCC/NRSC/…) to the `POLITICAL` lexicon →
+  political catches on the corpus rose **6 → 14**, with **false positives still 0** on the
+  ~58k ham.
+- **Figure-name FP guardrail (proven):** a political NAME is only ONE strong signal, so the
+  ≥2-strong rule means it can never flag alone — texting a friend about Trump/Biden/Pelosi
+  (or a name + a casual "$20 pizza") stays clean; only *name + a fundraising ask* flags. New
+  `figure_name_alone_is_clean` / `figure_name_plus_casual_money_is_clean` /
+  `figure_name_plus_fundraising_is_spam` unit tests lock this in. `cargo test` → 57 unit +
+  3 corpus, all pass.
+- Broad `looks_political_broad` yardstick added to the corpus test ONLY as a measurement aid
+  (not part of the product detector) to approximate political recall without hand-reading the
+  corpus.
+
 ### 2026-07-03 — Real-corpus validation (UCI SMS Spam Collection)
 - Added `engine/tests/corpus.rs` — runs the L0 political-spam heuristic over the full **UCI
   SMS Spam Collection** (5,574 real labelled SMS: 4,827 ham + 747 spam). **Result: 0 false

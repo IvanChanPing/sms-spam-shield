@@ -23,3 +23,4 @@ docs/ARCHITECTURE_SPEC.md
 
 # Test corpus data (fetched, not vendored — see engine/tests/data/README.md)
 engine/tests/data/SMSSpamCollection
+engine/tests/data/Combined-Labeled-Dataset.csv
