@@ -33,3 +33,9 @@ engine/tests/data/winred_live.txt
 engine/tests/data/political_confirmed.txt
 tools/audit_candidates.txt
 tools/audit_noncand_sample.txt
+tools/audit_local_political.txt
+tools/audit_local_result.txt
+
+# Python bytecode cache
+__pycache__/
+*.pyc
