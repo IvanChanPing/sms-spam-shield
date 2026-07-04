@@ -99,6 +99,7 @@ const FUNDRAISING: &[&str] = &[
     "give $", "rush a", "rush $", "grassroots gift", "matching", "matched", "% match",
     "triple match", "double match", "fundrais", "fec deadline", "before midnight",
     "our goal", "reach our goal", "hit our goal", "raise $", "split a",
+    "donor", "grassroots donor", "end-of-quarter", "end of quarter",
 ];
 
 /// Political / campaign / get-out-the-vote terms.
@@ -108,6 +109,7 @@ const POLITICAL: &[&str] = &[
     "amendment", "super pac", "dark money", "citizens united", "flip the",
     "take back the majority", "the majority", "your district", "your rep",
     "representative", "senator", "petition", "endorse", "polls", "midterm",
+    "polling", "governor", "for congress", "for senate", "for president",
     // Name-based political markers — figures / movements / committees. This is the
     // recall gap the UCI + combined-corpus baseline surfaced: name-based fundraising
     // spam ("Trump … please contribute", "Speaker Pelosi …") slipped through because
@@ -144,6 +146,19 @@ const ENGAGEMENT_CTA: &[&str] = &[
     "who will you vote", "who do you plan to vote", "plan to vote for", "how will you vote",
     "take our poll", "take the poll", "our official poll", "official poll", "quick poll",
     "take our survey", "official survey",
+    // Survey / poll CTA variants seen in real P2P political texts (2026-07-04 recall audit).
+    // Generic-sounding on their own, but the ≥2-strong rule means they only flag WITH a
+    // political signal — a political-identity + "take my survey" is a political survey.
+    "voter survey", "take my survey", "take a survey", "take this survey", "brief survey",
+    "quick survey", "short survey", "respond to some questions", "would you vote",
+    "who do you support", "voter verification", "voter guide", "take our census",
+    "nationwide census", "take the census",
+    // Get-out-the-vote ACTION call-to-action phrases (very low false-positive: banks / 2FA /
+    // retail / delivery never say these). Pair with a political signal → political spam.
+    "request your absentee ballot", "request your ballot", "request an absentee",
+    "vote by mail", "vote-by-mail", "mail-in ballot", "ballot drop", "find your polling",
+    "where to vote", "register to vote", "cast your ballot", "have you voted", "get to the polls",
+    "make your plan to vote", "your voting plan",
 ];
 
 /// Result of running the heuristic (internal; converted to a `Verdict`).
@@ -198,6 +213,9 @@ impl Signals {
         }
         if self.political {
             r.push("political/campaign language".to_string());
+        }
+        if self.engagement {
+            r.push("political engagement CTA (survey/poll/petition/GOTV)".to_string());
         }
         if self.reply_yn {
             r.push("survey/pledge call-to-action".to_string());

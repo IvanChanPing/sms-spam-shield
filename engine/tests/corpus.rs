@@ -342,6 +342,48 @@ fn winred_live_samples() {
     eprintln!("=========================================================================\n");
 }
 
+/// RECALL over the 26 LLM-confirmed political-spam messages (broad-net candidates from the
+/// US corpus that BOTH Haiku and local gemma3 independently judged political — see
+/// tools/recall_audit.py). This is the labeled recall set. Reports how many the heuristic
+/// now flags and prints the misses (the AI-tier residual). Run: cargo test --test corpus
+/// political_confirmed -- --nocapture
+#[test]
+fn political_confirmed_recall() {
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/political_confirmed.txt");
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => {
+            eprintln!("SKIP: political_confirmed.txt not present — see tests/data/README.md.");
+            return;
+        }
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let cfg = HeuristicConfig::default();
+    let (mut total, mut hit) = (0u32, 0u32);
+    let mut misses: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let msg = line.trim();
+        if msg.is_empty() {
+            continue;
+        }
+        total += 1;
+        // real political spam comes from an unknown 10-digit P2P number
+        if classify_political(msg, "+13602182008", false, &cfg).is_some() {
+            hit += 1;
+        } else {
+            misses.push(first_chars(msg, 120));
+        }
+    }
+    let recall = 100.0 * hit as f64 / total.max(1) as f64;
+    eprintln!("\n===== POLITICAL RECALL (26 LLM-confirmed real samples) =====");
+    eprintln!("flagged {hit}/{total}  (~{recall:.0}% recall)  — was 3/26 before the recall tune");
+    for m in &misses {
+        eprintln!("  MISS (AI-tier residual): {m}");
+    }
+    eprintln!("============================================================\n");
+}
+
 // ---- Parsers for the different dataset formats → (is_ham, message). ----
 fn parse_uci(text: &str) -> Vec<(bool, String)> {
     text.lines()

@@ -5,6 +5,22 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-04 — BASIC-script recall tune against the confirmed set (FP-safe)
+- Used the 26-message LLM-confirmed political set (Haiku AND local gemma3 independently
+  agreed on 26/175 — cross-validated) to raise L0 recall the disciplined way: broadened the
+  ENGAGEMENT_CTA lexicon with real survey/poll CTA variants ("voter survey", "take my survey",
+  "would you vote", "voter guide") and get-out-the-vote ACTION phrases ("request your absentee
+  ballot", "vote by mail", "find your polling place", "register to vote", "have you voted");
+  added `polling`/`governor`/`for congress|senate|president` to POLITICAL and `donor`/
+  `end-of-quarter` to FUNDRAISING. These only flag WITH a second political signal (the ≥2-strong
+  rule), and GOTV/ survey CTAs are near-zero-FP (banks/2FA/retail/delivery never say them). No
+  sample-specific hardcoding (removed a couple of over-specific phrases that fit one sample).
+- **Result:** recall on the 26 confirmed set **3/26 → 16/26 (~62%)**; IMC25 US catches **3 → 17**;
+  and **false positives stayed 0 across 104,899 messages** (UCI 0/4,827, combined 0/53,396,
+  Balanced 0/10,191, Mishra 0/5,971). 58 unit + corpus tests green; all clean controls hold.
+  New `political_confirmed_recall` corpus test tracks it; the 10 remaining misses (single-category
+  news/advocacy/urgency like "SCORCHED EARTH on the Trump indictment") are the AI-tier (L1) residual.
+
 ### 2026-07-04 — Recall audit (broad-net + LLM judge) + two-tier product decision
 - **Method** (`tools/recall_audit.py`): to measure what the strict heuristic MISSES without
   hand-labelling thousands of texts, a deliberately BROAD keyword net over-selects candidates
