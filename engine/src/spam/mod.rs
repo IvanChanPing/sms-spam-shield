@@ -67,6 +67,7 @@ struct SpamState {
     // --- crowd feed (opt-in shared fingerprint feed) ---
     crowd_cfg: CrowdConfig,
     crowd_store: CrowdFeedStore,
+    trusted_senders: Vec<String>,
 }
 
 impl Default for SpamState {
@@ -85,6 +86,7 @@ impl Default for SpamState {
             store: IndicatorStore::default(),
             crowd_cfg: CrowdConfig::default(),
             crowd_store: CrowdFeedStore::default(),
+            trusted_senders: Vec::new(),
         }
     }
 }
@@ -157,6 +159,10 @@ pub struct SpamConfig {
     pub crowd_auth_header_name: String,
     /// Value for [crowd_auth_header_name]. Empty = none.
     pub crowd_auth_header_value: String,
+    /// Trusted senders never flagged by the political heuristic regardless of content
+    /// (e.g. "Eventbrite", your bank's short code, a campaign you opted into). Matched by
+    /// alphanumeric sender-ID or by digits. Feed/reputation checks still apply. Default empty.
+    pub trusted_senders: Vec<String>,
 }
 
 /// Severity level of a verdict. Mirrors `engine::SpamLevel`.
@@ -260,6 +266,7 @@ pub fn spam_configure(config: SpamConfig) {
         auth_header_name: config.crowd_auth_header_name,
         auth_header_value: config.crowd_auth_header_value,
     };
+    st.trusted_senders = config.trusted_senders;
     st.configured = true;
 
     // Warm the index from the on-disk cache so classification works immediately
@@ -402,9 +409,13 @@ pub async fn spam_classify(text: String, sender: String, is_known_contact: bool)
         }
         let v = engine::classify_offline(&st.store, &text, &sender);
         let crowd_v = crowd::match_feed(&st.crowd_store, &text, &sender);
-        // L0 political-spam heuristic (the flagship content detector). Default config for now;
-        // host-supplied trusted_senders/fundraising_domains can be threaded through later.
-        let heur_v = classify_political(&text, &sender, is_known_contact, &HeuristicConfig::default());
+        // L0 political-spam heuristic (the flagship content detector), with the host's
+        // trusted-sender allowlist applied so opted-in bulk senders are never flagged.
+        let hcfg = HeuristicConfig {
+            trusted_senders: st.trusted_senders.clone(),
+            ..HeuristicConfig::default()
+        };
+        let heur_v = classify_political(&text, &sender, is_known_contact, &hcfg);
         let cfg = online::OnlineConfig {
             safebrowsing_api_key: st.safebrowsing_api_key.clone(),
             number_reputation_url_template: st.number_reputation_url_template.clone(),

@@ -14,4 +14,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "sms-spam-shield-android"
-include(":spamshield-ai")
+include(":spamshield")      // core AAR: SpamShield facade + engine + refresh worker
+include(":spamshield-ai")   // optional L1 AI layer (Nano / cloud)

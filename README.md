@@ -32,9 +32,48 @@ library itself stays commercially usable.
 - **`android/`** — Kotlin library (AAR): the public `SpamShield` API, the pluggable L1 AI
   layer (Nano / cloud), and the optional `AutoFilter` helper.
 
+## Quick start (drop it in)
+Add the core AAR (and, optionally, the AI layer), then it's ~4 lines:
+
+```kotlin
+// 1. one-time setup (app start)
+SpamShield.configure(context, SpamShield.Config(
+    trustedSenders = listOf("Eventbrite", "22395"),           // never-flag list (optional)
+    crowdFeedUrl   = "https://…/feed.json",                    // opt-in crowd feed (optional)
+))
+SpamShield.scheduleAutoRefresh(context)                        // self-starting feed refresh
+
+// 2. on each incoming SMS (off the main thread)
+val verdict = SpamShield.classify(sender, body, isKnownContact = false)
+if (verdict.isSpam) markAsSpam(message)                        // YOUR app decides what to do
+
+// 3. when the user confirms spam → help everyone (optional, opt-in)
+SpamShield.report(sender, body)                               // uploads a fingerprint, not the text
+```
+
+`classify` never blocks delivery — it returns a `Verdict{ level, score, reasons, matchedSource }`
+and the host decides (badge / spam folder / silence / auto-hide). The optional on-device or cloud
+**AI** (`:spamshield-ai`) plugs in behind the same idea for the harder, vaguer cases.
+
+## Repository map
+| Path | What lives here |
+|---|---|
+| `engine/src/spam/heuristic.rs` | **L0** political-spam content detector (the flagship). Lexicons + the ≥2-signal decision rule. |
+| `engine/src/spam/crowd.rs` | **Crowd feed** client: rotation-proof fingerprint, feed store, match, report, transport. |
+| `engine/src/spam/{extract,store,feeds,online}.rs` | URL/number extraction · indicator store · L2 threat-feed download · L3 online lookups. |
+| `engine/src/spam/engine.rs` | Offline decision (`classify_offline`) + the `Verdict`/`SpamLevel` types. |
+| `engine/src/spam/mod.rs` | The UniFFI surface: `spam_configure` / `spam_classify` / `spam_report_spam` / `spam_refresh_*` / `spam_status`. |
+| `engine/tests/corpus.rs` | Real-corpus tests (false-positive + recall) — see `tests/data/README.md` to fetch data. |
+| `android/spamshield/` | Core AAR: the `SpamShield` facade + the self-starting `SpamRefreshWorker`. |
+| `android/spamshield-ai/` | Optional L1 AI layer (`NanoAiClassifier` / `CloudAiClassifier`). |
+| `docs/` | `AI_LAYER.md`, `CROWD_FEED_DESIGN.md`, architecture spec. |
+
 ## Status
-Early development. `engine/` extracted and host-tested (23/23). L0 heuristic, the Kotlin
-AAR, and the L1 AI layer are in progress. Not yet published.
+Early development, host-tested. The Rust `engine/` (L0 heuristic + crowd feed + feeds) passes
+**67 unit + 7 real-corpus tests** with **0 false positives across ~105k real messages**; the FFI
+wires crowd-match + L0 + feeds into `spam_classify`. The Kotlin `SpamShield` facade, the refresh
+worker, and the L1 AI layer are written but **compile-UNVERIFIED** (no Android build env here);
+the crowd-feed **server** is designed (`docs/CROWD_FEED_DESIGN.md`) but not built. Not yet published.
 
 ## License
 [Apache-2.0](LICENSE).

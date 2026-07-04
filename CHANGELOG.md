@@ -5,6 +5,27 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-04 — Public Kotlin `SpamShield` facade + drop-in docs + crowd-feed design
+- **Core Android module (`android/spamshield/`, compile-UNVERIFIED — no Android env here):**
+  - `SpamShield.kt` — the single public entry point (clean Kotlin facade over the UniFFI
+    bindings): `configure(context, Config)` / `classify(sender, body, isKnownContact) → Verdict`
+    / `report(sender, body)` / `refreshNow()` / `scheduleAutoRefresh(context)`. Hides the FFI
+    record/enum shapes behind plain `Config`/`Verdict`/`Level`/`Feed` types; `Config` has
+    privacy-first defaults (online + crowd OFF). Residuals to confirm at binding-gen time are
+    listed in the file header (generated package/enum spelling, suspend mapping, .so+JNA).
+  - `SpamRefreshWorker.kt` — WorkManager `CoroutineWorker` (12h, network-constrained, KEEP)
+    → self-starting feed + crowd refresh, zero per-boot manual step.
+  - `build.gradle.kts` (com.android.library, coroutines + work-runtime + JNA), `AndroidManifest.xml`
+    (INTERNET/ACCESS_NETWORK_STATE), and `settings.gradle.kts` now includes `:spamshield`.
+- **Engine:** threaded `trusted_senders` through the FFI — `SpamConfig.trusted_senders` →
+  `HeuristicConfig` in `spam_classify`, so the host's never-flag allowlist is actually applied
+  (was default-empty before). `cargo test` → 67 lib + 7 corpus pass.
+- **Docs:** `docs/CROWD_FEED_DESIGN.md` (fingerprint model, GitHub-Actions-broker write path,
+  Play Integrity/App Attest + N-reporter consensus, provider-hosted option). README gains a
+  **Quick start** (the ~4-line drop-in) and a **Repository map** table for navigability.
+- Navigability check: engine files are single-concern (extract/store/feeds/online/heuristic/
+  crowd/engine/mod), 154–914 lines each (heuristic's size is ~half lexicons+tests) — not spaghetti.
+
 ### 2026-07-04 — Wire crowd feed + L0 heuristic into the FFI; styled-fp hardening
 - **FFI wiring (`spam/mod.rs`):** `SpamConfig` gains `crowd_enabled/crowd_feed_url/
   crowd_report_url/crowd_auth_header_name/crowd_auth_header_value`; `spam_configure` builds the
