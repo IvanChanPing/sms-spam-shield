@@ -5,6 +5,28 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-04 — Crowd-feed SERVER: GitHub-Actions consensus broker (`server/`)
+- Built the write-path "server" with **no host of ours** — GitHub Actions is the compute, the feed
+  is a static file served via `raw.githubusercontent`:
+  - `server/ingest.py` — the broker (pure stdlib). CONSENSUS baseline: a `content_fp` is held in
+    `staging.json` and only promoted to `feed.json` after **N distinct `reporter_id`s** (default 3,
+    env `CROWD_CONSENSUS_THRESHOLD`). Per-reporter dedup; anonymous reports collapse to a single
+    `anon` vote so they can't reach the threshold alone; malformed fingerprints rejected (exit 3);
+    promotion picks the most-reported sender number. Optional `CLASSIFY_CMD` re-classification gate
+    (fail-closed) + optional attestation (verify in the workflow) — documented, off by default.
+  - `.github/workflows/crowd-ingest.yml` — fires on `repository_dispatch: crowd-report`, writes the
+    payload via env-indirection (no shell injection), runs `ingest.py`, commits the feed;
+    `permissions: contents:write`, `concurrency` serializes ingests. `server/feed.json` (`[]`) +
+    `server/staging.json` (`{}`) seeded.
+  - `server/test_ingest.py` — 6 host tests (promote-at-threshold, dedup, anon-flood cap,
+    malformed-reject, already-published no-op, threshold-2) → **all pass**.
+  - `server/README.md` — deploy + client wiring + security model.
+- **Honest seam flagged (not hand-waved):** the generic client POSTs a bare `CrowdReport`, but
+  GitHub's dispatch API wants a `{event_type, client_payload}` envelope — so bridging needs a small
+  client "dispatch-mode" or a provider endpoint (both server-free). Documented in `server/README.md`.
+- STATUS: `ingest.py` logic host-tested; the **live GitHub-Actions run is UNVERIFIED** here (Actions
+  runs on GitHub) — enable the workflow + send a test dispatch to exercise end-to-end.
+
 ### 2026-07-04 — Verify Kotlin facade wiring against the real generated bindings
 - Generated the actual UniFFI Kotlin bindings (`cargo run --bin uniffi-bindgen -- generate
   --library target/debug/libspam_shield.so --language kotlin`) and read them to confirm

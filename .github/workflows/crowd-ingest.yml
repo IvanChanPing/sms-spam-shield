@@ -1,0 +1,61 @@
+# crowd-ingest — the crowd-feed broker workflow (the "server", no host of ours to run).
+#
+# WHAT: fires when a client app POSTs a `repository_dispatch` event of type `crowd-report`
+# carrying one CrowdReport in `client_payload`; runs server/ingest.py (consensus broker) and
+# commits the updated server/feed.json when a fingerprint reaches the reporter threshold.
+# WHY: publishes a shared spam-fingerprint feed without running a server (GitHub Actions is the
+# compute; the feed is served as a static file via raw.githubusercontent). See server/README.md
+# and docs/CROWD_FEED_DESIGN.md.
+# HOW TO TRIGGER (client):
+#   POST https://api.github.com/repos/<owner>/<repo>/dispatches
+#   Authorization: Bearer <token with contents:write>   (or a GitHub App installation token)
+#   { "event_type": "crowd-report",
+#     "client_payload": { "content_fp": "9f3a…", "reporter_id": "…", "sender_number": "…" } }
+# STATUS: workflow logic host-tested via server/ingest.py's tests; the live GitHub-Actions run is
+# UNVERIFIED here (Actions runs on GitHub). Set repo Settings→Actions→Workflow permissions to
+# "Read and write" (or rely on the `permissions:` block below).
+name: crowd-ingest
+
+on:
+  repository_dispatch:
+    types: [crowd-report]
+
+permissions:
+  contents: write
+
+# Serialize ingests so concurrent reports never race on feed.json / a push conflict.
+concurrency:
+  group: crowd-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Write the client payload to a file WITHOUT interpolating it into a shell line
+      # (env indirection avoids any shell/script injection from the untrusted payload).
+      - name: Materialize report
+        env:
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: printf '%s' "$PAYLOAD" > "$RUNNER_TEMP/report.json"
+
+      - name: Ingest (consensus broker)
+        working-directory: server
+        env:
+          CROWD_CONSENSUS_THRESHOLD: "3"
+          # Optional: set CLASSIFY_CMD to re-classify de-identified skeletons (see ingest.py).
+        run: python3 ingest.py --payload "$RUNNER_TEMP/report.json" --feed feed.json --staging staging.json
+
+      - name: Commit if the feed changed
+        run: |
+          if [ -n "$(git status --porcelain server/feed.json server/staging.json)" ]; then
+            git config user.name  "crowd-feed-bot"
+            git config user.email "crowd-feed-bot@users.noreply.github.com"
+            git add server/feed.json server/staging.json
+            git commit -m "crowd: ingest report [skip ci]"
+            git push
+          else
+            echo "no change (staged vote or noop)"
+          fi
