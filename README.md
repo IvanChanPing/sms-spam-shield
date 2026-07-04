@@ -22,10 +22,10 @@ its users an auto-hide toggle. An optional `AutoFilter` helper is provided for t
 ## Layers (all optional except L0)
 | Layer | What | Cost | Network |
 |---|---|---|---|
-| **L0 Political-spam heuristic** | Content signals ("Paid by" disclaimer, fundraising/GOTV language, reply-STOP, unknown P2P sender, shortlink). The reliable political-spam catcher. | tiny | none |
-| **L1 Local AI** *(optional)* | Prompt-driven ("is this unsolicited political spam?"). Uses on-device **Gemini Nano** (ML Kit GenAI Prompt API) where the phone has it → developer-configured **cloud** LLM → none. **No bundled model** — the app never ships gigabytes. | ~0 | on-device or cloud |
-| **L2 Feed matching** *(optional)* | Phishing URL/host/number vs downloaded threat feeds (OpenPhish/URLhaus). | small | download |
-| **L3 Online reputation** *(optional)* | Safe Browsing / number-reputation lookups. | ~0 | per-message |
+| **L0 Political-spam heuristic** | Content signals ("Paid by" disclaimer, fundraising/GOTV language, reply-STOP, unknown P2P sender, shortlink). The reliable political-spam catcher. | a few string scans — instant | none, fully offline |
+| **L1 Local AI** *(optional)* | Prompt-driven ("is this unsolicited political spam?"). Uses on-device **Gemini Nano** (ML Kit GenAI Prompt API) where the phone has it → developer-configured **cloud** LLM → none. **No bundled model** — the app never ships gigabytes. | one model call per message | the on-device model (no traffic), or your cloud endpoint |
+| **L2 Feed matching** *(optional)* | Phishing URL/host/number vs downloaded threat feeds (OpenPhish/URLhaus). | a quick set lookup | a periodic background feed download |
+| **L3 Online reputation** *(optional)* | Safe Browsing / number-reputation lookups. | one lookup per message | a request per message |
 
 Opt-in layers (L2/L3/cloud AI) send data off-device and/or need a one-time key → **off by
 default**. Non-commercial feeds (OpenPhish, Safe Browsing v4) are never bundled, so the
@@ -34,8 +34,9 @@ library itself stays commercially usable.
 ## Architecture
 - **`engine/`** — Rust core (UniFFI → `.so`): message extraction, the L0 heuristic, feed
   matching (L2) and online reputation (L3). No ML, tiny, self-contained binary.
-- **`android/`** — Kotlin library (AAR): the public `SpamShield` API, the pluggable L1 AI
-  layer (Nano / cloud), and the optional `AutoFilter` helper.
+- **`android/`** — Kotlin library (AAR): the public `SpamShield` API (a thin façade over the
+  Rust `spam_*` FFI, so you call `SpamShield.configure(...)`, not the raw `spam_configure`), the
+  pluggable L1 AI layer (Nano / cloud), and the optional `AutoFilter` helper.
 
 ## Quick start (drop it in)
 Add the core AAR (and, optionally, the AI layer), then it's ~4 lines:
@@ -59,6 +60,27 @@ SpamShield.report(sender, body)                               // uploads a finge
 `classify` never blocks delivery — it returns a `Verdict{ level, score, reasons, matchedSource }`
 and the host decides (badge / spam folder / silence / auto-hide). The optional on-device or cloud
 **AI** (`:spamshield-ai`) plugs in behind the same idea for the harder, vaguer cases.
+
+## Building from source
+Not on a package registry yet — build the two artifacts and add them to your app.
+
+**Requirements:** Android `minSdk` 26 (compileSdk 34, AGP 8.5) · Kotlin 1.9+ · Rust (stable) with
+[`cargo-ndk`](https://github.com/bbqsrc/cargo-ndk) for the native library · the UniFFI bindings
+generator (bundled — `cargo run --bin uniffi-bindgen`). The `:spamshield-ai` module also pulls
+`com.google.mlkit:genai-prompt` for on-device Nano.
+
+```bash
+# 1. run the engine tests (offline detector + real corpora)
+cd engine && cargo test
+
+# 2. build the native lib for Android + generate the Kotlin bindings
+cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 build --release
+cargo run --bin uniffi-bindgen -- generate --library target/release/libspam_shield.so \
+  --language kotlin --out-dir ../android/spamshield/src/main/java
+
+# 3. build the AARs (core, plus the optional AI layer)
+cd ../android && ./gradlew :spamshield:assembleRelease :spamshield-ai:assembleRelease
+```
 
 ## Repository map
 | Path | What lives here |
