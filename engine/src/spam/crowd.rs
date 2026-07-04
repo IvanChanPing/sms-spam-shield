@@ -57,6 +57,11 @@ pub struct CrowdConfig {
     pub auth_header_name: String,
     /// Value for [auth_header_name]. Empty = no header.
     pub auth_header_value: String,
+    /// When non-empty, POST bodies are wrapped as a GitHub `repository_dispatch` envelope
+    /// `{"event_type": <this>, "client_payload": <report>}` (so `report_url` can be the GitHub
+    /// `…/dispatches` endpoint + `auth_header_* = Authorization / Bearer <token>`). Empty = POST
+    /// the bare report (a provider's own endpoint). See server/README.md.
+    pub dispatch_event_type: String,
 }
 
 impl CrowdConfig {
@@ -77,6 +82,11 @@ impl CrowdConfig {
 pub struct CrowdReport {
     /// The match key — hash of the normalized, link/greeting/code-stripped message body.
     pub content_fp: String,
+    /// Anonymous per-install reporter id (a random UUID the host persists; NOT identity). The
+    /// server dedups by this so it can count DISTINCT reporters for consensus — without it every
+    /// report collapses to one "anon" vote and can never reach the threshold. Empty = anonymous.
+    #[serde(default)]
+    pub reporter_id: String,
     /// The sender number this was seen from (normalized digits). Bonus signal, not the key.
     #[serde(default)]
     pub sender_number: String,
@@ -221,12 +231,26 @@ pub fn content_fingerprint(text: &str) -> String {
 
 /// Build a report to upload for a message the app has decided is spam. `now_unix` stamped by
 /// the caller (the engine has no clock of its own here).
-pub fn build_report(text: &str, sender: &str, now_unix: i64) -> CrowdReport {
+pub fn build_report(text: &str, sender: &str, reporter_id: &str, now_unix: i64) -> CrowdReport {
     CrowdReport {
         content_fp: content_fingerprint(text),
+        reporter_id: reporter_id.to_string(),
         sender_number: extract::normalize_number(sender),
         first_seen_unix: now_unix,
         count: 1,
+    }
+}
+
+/// Build the POST body for a report: a GitHub `repository_dispatch` envelope when the config sets
+/// `dispatch_event_type`, otherwise the bare report (generic endpoint). Split out for host testing.
+pub fn request_body(cfg: &CrowdConfig, report: &CrowdReport) -> serde_json::Value {
+    if cfg.dispatch_event_type.is_empty() {
+        serde_json::to_value(report).unwrap_or(serde_json::Value::Null)
+    } else {
+        serde_json::json!({
+            "event_type": cfg.dispatch_event_type,
+            "client_payload": report,
+        })
     }
 }
 
@@ -307,7 +331,14 @@ pub async fn submit_report(cfg: &CrowdConfig, report: &CrowdReport) -> Result<()
     if !cfg.can_report() {
         return Err("crowd reporting not configured".to_string());
     }
-    let req = with_auth(client().post(&cfg.report_url).json(report), cfg);
+    let mut req = client().post(&cfg.report_url).json(&request_body(cfg, report));
+    if !cfg.dispatch_event_type.is_empty() {
+        // GitHub REST expects these on a repository_dispatch call.
+        req = req
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28");
+    }
+    let req = with_auth(req, cfg);
     let resp = req.send().await.map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("report HTTP {}", resp.status()));
@@ -367,7 +398,7 @@ mod tests {
     #[test]
     fn match_feed_hits_on_content_and_number() {
         let spam = "Chip in $25 now to help flip the House before tonight's deadline!";
-        let report = build_report(spam, "+13602182008", 1_700_000_000);
+        let report = build_report(spam, "+13602182008", "r1", 1_700_000_000);
         let store = CrowdFeedStore::from_reports(&[report], 1_700_000_000);
 
         // same campaign from a DIFFERENT rotated number still matches on content.
@@ -385,16 +416,17 @@ mod tests {
 
     #[test]
     fn report_keeps_sender_number_normalized() {
-        let r = build_report("Donate now!", "+1 (360) 218-2008", 42);
+        let r = build_report("Donate now!", "+1 (360) 218-2008", "rid-1", 42);
         assert_eq!(r.sender_number, extract::normalize_number("+1 (360) 218-2008"));
+        assert_eq!(r.reporter_id, "rid-1");
         assert_eq!(r.first_seen_unix, 42);
     }
 
     #[test]
     fn feed_json_round_trips() {
         let reports = vec![
-            build_report("Donate to flip the Senate!", "+13602182008", 1),
-            build_report("Rush $9 before the deadline", "+14045551234", 2),
+            build_report("Donate to flip the Senate!", "+13602182008", "a", 1),
+            build_report("Rush $9 before the deadline", "+14045551234", "b", 2),
         ];
         let json = serde_json::to_string(&reports).unwrap();
         let back = parse_feed(&json).unwrap();
@@ -409,6 +441,23 @@ mod tests {
     fn empty_store_matches_nothing() {
         let store = CrowdFeedStore::default();
         assert!(match_feed(&store, "Donate now to flip the Senate!", "+13602182008").is_none());
+    }
+
+    #[test]
+    fn request_body_bare_vs_dispatch_envelope() {
+        let report = build_report("Donate now to flip the Senate!", "+13602182008", "rid-9", 7);
+        // generic mode (no dispatch_event_type) → the bare report
+        let generic = CrowdConfig::default();
+        let bare = request_body(&generic, &report);
+        assert_eq!(bare["content_fp"], report.content_fp);
+        assert!(bare.get("event_type").is_none());
+        // dispatch mode → GitHub repository_dispatch envelope
+        let mut disp = CrowdConfig::default();
+        disp.dispatch_event_type = "crowd-report".to_string();
+        let env = request_body(&disp, &report);
+        assert_eq!(env["event_type"], "crowd-report");
+        assert_eq!(env["client_payload"]["content_fp"], report.content_fp);
+        assert_eq!(env["client_payload"]["reporter_id"], "rid-9");
     }
 
     #[test]

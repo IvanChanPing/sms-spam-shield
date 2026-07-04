@@ -1,6 +1,7 @@
 package com.spamshield
 
 import android.content.Context
+import java.util.UUID
 import uniffi.spam_shield.SpamConfig
 import uniffi.spam_shield.SpamFeedKind
 import uniffi.spam_shield.SpamFeedSource
@@ -82,10 +83,21 @@ object SpamShield {
         /** Optional header sent on crowd calls (API key / attestation token). */
         val crowdAuthHeaderName: String = "",
         val crowdAuthHeaderValue: String = "",
+        /**
+         * To publish to the community feed's GitHub-Actions broker, set this to "crowd-report" and
+         * `crowdReportUrl = "https://api.github.com/repos/<owner>/<repo>/dispatches"` +
+         * `crowdAuthHeaderName/Value = "Authorization" / "Bearer <token>"`. Empty = POST the bare
+         * report to a provider endpoint. See server/README.md.
+         */
+        val crowdDispatchEventType: String = "",
         /** Opt-in online layer (Safe Browsing / number reputation). Off by default. */
         val onlineEnabled: Boolean = false,
         val safeBrowsingApiKey: String = "",
     )
+
+    /** Anonymous per-install reporter id (random UUID, persisted). Set by [configure]; sent with
+     *  each [report] so the server can count DISTINCT reporters for consensus. Not identity. */
+    private var reporterId: String = ""
 
     /** Absolute path to the engine's JSON cache (survives restart). Under the app's filesDir. */
     private fun cachePath(context: Context): String =
@@ -93,7 +105,17 @@ object SpamShield {
 
     /** Configure the engine. Call at app start and whenever [Config] changes. Cheap + sync. */
     fun configure(context: Context, config: Config) {
+        reporterId = loadOrCreateReporterId(context)
         spamConfigure(config.toFfi(cachePath(context)))
+    }
+
+    /** Load the persisted anonymous reporter id, creating (and saving) one on first run. */
+    private fun loadOrCreateReporterId(context: Context): String {
+        val prefs = context.getSharedPreferences("spamshield", Context.MODE_PRIVATE)
+        prefs.getString("reporter_id", null)?.let { return it }
+        val id = UUID.randomUUID().toString()
+        prefs.edit().putString("reporter_id", id).apply()
+        return id
     }
 
     /**
@@ -108,7 +130,8 @@ object SpamShield {
      * privacy-preserving fingerprint (raw text never leaves the device) and uploads it. Returns
      * true on success; a safe no-op (false) if the crowd feed isn't configured. Suspend.
      */
-    suspend fun report(sender: String, body: String): Boolean = spamReportSpam(body, sender)
+    suspend fun report(sender: String, body: String): Boolean =
+        spamReportSpam(body, sender, reporterId)
 
     /** Refresh threat feeds + crowd feed once, now. Returns true if anything installed. Suspend. */
     suspend fun refreshNow(): Boolean {
@@ -137,6 +160,7 @@ object SpamShield {
         crowdReportUrl = crowdReportUrl,
         crowdAuthHeaderName = crowdAuthHeaderName,
         crowdAuthHeaderValue = crowdAuthHeaderValue,
+        crowdDispatchEventType = crowdDispatchEventType,
         trustedSenders = trustedSenders,
     )
 

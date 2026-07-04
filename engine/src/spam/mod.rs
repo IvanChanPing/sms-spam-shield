@@ -159,6 +159,10 @@ pub struct SpamConfig {
     pub crowd_auth_header_name: String,
     /// Value for [crowd_auth_header_name]. Empty = none.
     pub crowd_auth_header_value: String,
+    /// When non-empty, crowd reports are POSTed as a GitHub `repository_dispatch` envelope with
+    /// this `event_type` (use "crowd-report" + point crowd_report_url at `…/dispatches`). Empty =
+    /// POST the bare report to a provider endpoint. See server/README.md.
+    pub crowd_dispatch_event_type: String,
     /// Trusted senders never flagged by the political heuristic regardless of content
     /// (e.g. "Eventbrite", your bank's short code, a campaign you opted into). Matched by
     /// alphanumeric sender-ID or by digits. Feed/reputation checks still apply. Default empty.
@@ -265,6 +269,7 @@ pub fn spam_configure(config: SpamConfig) {
         report_url: config.crowd_report_url,
         auth_header_name: config.crowd_auth_header_name,
         auth_header_value: config.crowd_auth_header_value,
+        dispatch_event_type: config.crowd_dispatch_event_type,
     };
     st.trusted_senders = config.trusted_senders;
     st.configured = true;
@@ -500,7 +505,7 @@ pub async fn spam_classify(text: String, sender: String, is_known_contact: bool)
 /// Returns true on a successful upload; a safe no-op (false) if crowd reporting isn't
 /// configured or the upload fails. Async (network) — call it off the UI thread.
 #[uniffi::export(async_runtime = "tokio")]
-pub async fn spam_report_spam(text: String, sender: String) -> bool {
+pub async fn spam_report_spam(text: String, sender: String, reporter_id: String) -> bool {
     let (cfg, report) = {
         let st = STATE.read().unwrap_or_else(|e| e.into_inner());
         if !st.crowd_cfg.can_report() {
@@ -508,7 +513,7 @@ pub async fn spam_report_spam(text: String, sender: String) -> bool {
         }
         (
             st.crowd_cfg.clone(),
-            crowd::build_report(&text, &sender, now_unix()),
+            crowd::build_report(&text, &sender, &reporter_id, now_unix()),
         )
     };
     match crowd::submit_report(&cfg, &report).await {

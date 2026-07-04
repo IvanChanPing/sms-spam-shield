@@ -5,6 +5,25 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-04 — Close the client→server seam: dispatch-mode + anonymous reporter_id
+- The app can now submit to the GitHub-Actions broker end-to-end (was a documented gap):
+  - `crowd.rs`: `CrowdReport` gains `reporter_id` (anonymous per-install UUID) so the server can
+    count DISTINCT reporters for consensus — without it every report was "anon" and could never
+    reach threshold. `CrowdConfig.dispatch_event_type` + new `request_body()` wrap the POST as a
+    GitHub `repository_dispatch` envelope `{event_type, client_payload}` when set (else the bare
+    report); `submit_report` adds the GitHub `Accept`/`X-GitHub-Api-Version` headers in that mode.
+    `build_report(text, sender, reporter_id, now)`. New test `request_body_bare_vs_dispatch_envelope`;
+    `cargo test` → **68 lib pass** (10 crowd).
+  - FFI (`mod.rs`): `SpamConfig.crowd_dispatch_event_type`; `spam_report_spam(text, sender,
+    reporter_id)`. Re-generated the UniFFI Kotlin bindings and re-verified: `SpamConfig` = 16 fields
+    incl. `crowdDispatchEventType`, `suspend fun spamReportSpam(text, sender, reporterId)`.
+  - `SpamShield.kt`: `Config.crowdDispatchEventType`; `configure()` generates+persists an anonymous
+    `reporter_id` (UUID in SharedPreferences, automatic — no per-boot step); `report()` sends it.
+    Wiring re-verified against the regenerated bindings.
+  - `server/README.md`: seam section replaced with the two supported submit paths (GitHub dispatch-
+    mode built-in vs provider bare-endpoint). STILL UNVERIFIED: the live GitHub-Actions run + a real
+    device/AAR build.
+
 ### 2026-07-04 — Crowd-feed SERVER: GitHub-Actions consensus broker (`server/`)
 - Built the write-path "server" with **no host of ours** — GitHub Actions is the compute, the feed
   is a static file served via `raw.githubusercontent`:
