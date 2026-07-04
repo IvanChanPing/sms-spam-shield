@@ -72,8 +72,9 @@ and the host decides (badge / spam folder / silence / auto-hide). The optional o
 Early development, host-tested. The Rust `engine/` (L0 heuristic + crowd feed + feeds) passes
 **67 unit + 7 real-corpus tests** with **0 false positives across ~105k real messages**; the FFI
 wires crowd-match + L0 + feeds into `spam_classify`. The Kotlin `SpamShield` facade, the refresh
-worker, and the L1 AI layer are written but **compile-UNVERIFIED** (no Android build env here);
-the crowd-feed **server** is designed (`docs/CROWD_FEED_DESIGN.md`) but not built. Not yet published.
+worker, and the L1 AI layer are written but **not yet built** (Android build + on-device run pending —
+UniFFI bindings/AAR generation is the next step); the crowd-feed **server** is designed
+(`docs/CROWD_FEED_DESIGN.md`) but not built. Not yet published.
 
 ## License
 [Apache-2.0](LICENSE).
