@@ -5,6 +5,51 @@ Keep-a-Changelog; timestamps are UTC.
 
 ## [Unreleased]
 
+### 2026-07-04 — Recall audit (broad-net + LLM judge) + two-tier product decision
+- **Method** (`tools/recall_audit.py`): to measure what the strict heuristic MISSES without
+  hand-labelling thousands of texts, a deliberately BROAD keyword net over-selects candidates
+  (175/1,492 US msgs, intentionally including false positives), then a small LLM (Haiku)
+  adjudicates each as political-spam or not. NOT a blocklist — the LLM reads content and
+  judges; the broad net is a measurement instrument, not the product detector.
+- **Result:** Haiku confirmed **26/175 candidates are genuine political spam**, and **0/150**
+  non-candidates were political (the keyword net itself misses ~none). The strict L0 heuristic
+  caught only **3 of those 26 → ~12% recall**. The 23 misses are UNAMBIGUOUS political spam
+  ("*OFFICIAL MESSAGE FROM PRES TRUMP* Would you vote…", "Rush $9 before I review our supporter
+  list", "donate to my <party> campaign", NextGen CA voter surveys) — the conservative ≥2-strong
+  rule is discarding them. Saved the 26 as `engine/tests/data/political_confirmed.txt` (gitignored;
+  embeds IMC25 text) = the labeled political-spam recall set we previously lacked.
+- **Decision (product tiering):** BASIC mode = the on-device script (free, zero-FP, catches the
+  clear ones) — to be improved using the 26-msg recall set while re-verifying 0 FP on the ~58k ham.
+  ADVANCED mode = opt-in AI (the two already-scaffolded backends: on-device Nano [free/private] or
+  cloud [paid, off-device]) to "nail down everything," incl. the deliberately-vague texts. Next:
+  raise BASIC recall against the confirmed set (FP-guarded); wire the tier toggle into the API.
+
+### 2026-07-04 — US-only crowd-sourced corpus slice (IMC25) + detector run
+- Added `imc25_us_political_flags` corpus test over a **US-only** slice of the 2025
+  crowd-sourced smishing dataset (`reportsmishing/Smishing-Dataset-IMC25`, an IMC 2025
+  paper mining public user reports). Filtered the 33.9k-row global set to rows whose
+  reporting network was `original_network_country == USA` **and** `language == English`
+  → **1,492 messages (2019–2023)**, US-by-construction and majority-English — the first
+  slice that satisfies all of: post-2020-active, US-majority (100% US network), general
+  (all smishing scam types), English. Staged as `tests/data/imc25_us.txt` (fetched/derived,
+  not vendored). Rationale for filtering vs. using the raw set: the raw IMC25 is a *global*
+  corpus (USA only 4.6% of identified networks; India 11%, NL/GB/ES/FR/AU dominate) so it
+  fails the "not >50% foreign" rule — the US-network filter fixes that.
+- **Detector result:** over the 1,492 US messages the L0 political detector flagged **3**,
+  and all 3 are true political campaign/fundraising spam (a "Paid by …4Sheriff" GOTV text, a
+  "donate to my campaign" ask, and a "Pres Trump … defend our Election from the Left" blast).
+  It left the other 1,489 delivery/bank/refund smishing untouched — correct needle-in-haystack
+  behavior for a political-specific detector, 0 obvious false positives on the flags.
+- Added `winred_live_samples` test over **8 real 2024–2025 RNC/WinRed political-spam texts**
+  scraped verbatim from the public ResourcesForLife archive (item41854/item42207) — the
+  flagship rotating-number class no labelled dataset has. **Heuristic caught 1/8**: only the
+  sample with explicit political+fundraising co-occurrence (GOP+donate+Trump). The other 7 are
+  deliberately vague ("pitch in $25 to my next goal", "official party survey/question #3",
+  "Justice Department just found…") and carry almost no keyword signal — catching them by
+  keyword would break the zero-FP priority (they read like a friend/news). CONCLUSION: evasive
+  political spam needs the semantic **AI layer** (L1), not more L0 keywords. Data staged at
+  `tests/data/winred_live.txt` (WebFetch-extracted excerpts, may be partial).
+
 ### 2026-07-04 — Political-ENGAGEMENT signal (polls/petitions, not just donations)
 - Added an `ENGAGEMENT_CTA` signal (sign-our-letter / petition / "who will you vote for" /
   take-our-poll / pledge-to-vote) as a strong category, so political spam that asks for

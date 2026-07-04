@@ -262,3 +262,167 @@ fn political_recall_estimate() {
     }
     eprintln!("=======================================================\n");
 }
+
+/// Run the detector over the US-ONLY subset of the IMC 2025 crowd-sourced smishing
+/// dataset (reportsmishing/Smishing-Dataset-IMC25) — rows whose reporting network was
+/// `original_network_country == USA` and `language == English` (1,492 msgs, 2019–2023).
+/// This is the compliant US-majority slice: US-by-construction, recent, general (all
+/// smishing scam types). Reports how many the political detector flags and prints them.
+/// Run: cargo test --test corpus imc25_us -- --nocapture
+#[test]
+fn imc25_us_political_flags() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/imc25_us.txt");
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => {
+            eprintln!("SKIP: imc25_us.txt not present — see tests/data/README.md.");
+            return;
+        }
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let cfg = HeuristicConfig::default();
+
+    let (mut total, mut flagged) = (0u32, 0u32);
+    let mut hits: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let msg = line.trim();
+        if msg.is_empty() {
+            continue;
+        }
+        total += 1;
+        if classify_political(msg, "", false, &cfg).is_some() {
+            flagged += 1;
+            if hits.len() < 40 {
+                hits.push(first_chars(msg, 150));
+            }
+        }
+    }
+    eprintln!("\n===== IMC25 US-only smishing subset (crowd-sourced, 2019–2023) =====");
+    eprintln!("US-English messages: {total}  → flagged by the political detector: {flagged}");
+    eprintln!("(all rows are smishing spam; these flags are the political/fundraising overlap)");
+    for m in &hits {
+        eprintln!("  FLAG: {m}");
+    }
+    eprintln!("===================================================================\n");
+}
+
+/// Detector run over REAL, RECENT (2024–2025) US political-spam samples scraped verbatim
+/// from the public ResourcesForLife RNC/WinRed archive (item41854 / item42207) — the
+/// flagship rotating-number fundraising-text class that no labelled dataset contains.
+/// These are WebFetch-extracted excerpts (some may be partial). Prints per-message
+/// FLAG/miss so we can see the catch profile on the hard, deliberately-vague samples.
+/// Run: cargo test --test corpus winred_live -- --nocapture
+#[test]
+fn winred_live_samples() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/winred_live.txt");
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => {
+            eprintln!("SKIP: winred_live.txt not present — see tests/data/README.md.");
+            return;
+        }
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let cfg = HeuristicConfig::default();
+    let (mut total, mut flagged) = (0u32, 0u32);
+    eprintln!("\n===== Real 2024–2025 RNC/WinRed political-spam samples (live-scraped) =====");
+    for line in text.lines() {
+        let msg = line.trim();
+        if msg.is_empty() {
+            continue;
+        }
+        total += 1;
+        let hit = classify_political(msg, "", false, &cfg).is_some();
+        if hit {
+            flagged += 1;
+        }
+        eprintln!("  {} {}", if hit { "FLAG" } else { "miss" }, first_chars(msg, 110));
+    }
+    eprintln!("caught {flagged}/{total} — misses are the deliberately-vague evasive texts (the AI-layer case)");
+    eprintln!("=========================================================================\n");
+}
+
+// ---- Parsers for the different dataset formats → (is_ham, message). ----
+fn parse_uci(text: &str) -> Vec<(bool, String)> {
+    text.lines()
+        .filter_map(|l| {
+            let mut it = l.splitn(2, '\t');
+            let lab = it.next()?;
+            let msg = it.next()?;
+            Some((lab.trim() == "ham", msg.to_string()))
+        })
+        .collect()
+}
+fn parse_combined(text: &str) -> Vec<(bool, String)> {
+    // message,spam label,smishing label  (message may contain commas → peel from right)
+    text.lines()
+        .skip(1)
+        .filter_map(|l| {
+            let mut it = l.rsplitn(3, ',');
+            let _sm = it.next()?;
+            let spam = it.next()?.trim();
+            let msg = it.next()?;
+            if spam != "0" && spam != "1" {
+                return None;
+            }
+            Some((spam == "0", msg.to_string()))
+        })
+        .collect()
+}
+fn parse_labeltext(text: &str) -> Vec<(bool, String)> {
+    // LABEL,TEXT,URL,EMAIL,PHONE — classify the remainder after LABEL (trailing Yes/No
+    // columns carry no political signal, so they don't affect the count).
+    text.lines()
+        .skip(1)
+        .filter_map(|l| {
+            let mut it = l.splitn(2, ',');
+            let lab = it.next()?.trim().to_lowercase();
+            let rest = it.next()?;
+            Some((lab == "ham", rest.to_string()))
+        })
+        .collect()
+}
+
+/// Run the political-spam detector over EVERY message in ALL staged datasets and report
+/// how many it flags as political spam (and how many of those were labelled ham = possible
+/// false positives). Run: cargo test --test corpus flags_across -- --nocapture
+#[test]
+fn count_political_flags_across_all_datasets() {
+    let cfg = HeuristicConfig::default();
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data");
+    let datasets: &[(&str, fn(&str) -> Vec<(bool, String)>)] = &[
+        ("SMSSpamCollection", parse_uci),
+        ("Combined-Labeled-Dataset.csv", parse_combined),
+        ("Balanced_10191.csv", parse_labeltext),
+        ("Mishra_5971.csv", parse_labeltext),
+    ];
+    let (mut gt, mut gf, mut gfh) = (0u32, 0u32, 0u32);
+    eprintln!("\n===== POLITICAL FLAGS ACROSS ALL DATASETS =====");
+    for (name, parse) in datasets {
+        let bytes = match std::fs::read(dir.join(name)) {
+            Ok(b) => b,
+            Err(_) => {
+                eprintln!("  {name}: SKIP (absent)");
+                continue;
+            }
+        };
+        let rows = parse(&String::from_utf8_lossy(&bytes));
+        let (mut total, mut flag, mut flag_ham) = (0u32, 0u32, 0u32);
+        for (is_ham, msg) in &rows {
+            total += 1;
+            if classify_political(msg, "", false, &cfg).is_some() {
+                flag += 1;
+                if *is_ham {
+                    flag_ham += 1;
+                }
+            }
+        }
+        eprintln!("  {name}: {total} msgs → {flag} flagged political ({flag_ham} of them labelled ham = possible FP)");
+        gt += total;
+        gf += flag;
+        gfh += flag_ham;
+    }
+    eprintln!("  ---------------------------------------------");
+    eprintln!("  TOTAL: {gt} msgs → {gf} flagged political ({gfh} labelled ham)");
+    eprintln!("===============================================\n");
+}

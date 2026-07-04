@@ -12,7 +12,37 @@ unzip -o sms.zip SMSSpamCollection      # → engine/tests/data/SMSSpamCollectio
 # (optional, much larger) combined general-spam / smishing corpus (~84.8k messages):
 curl -fsSL -o Combined-Labeled-Dataset.csv \
   "https://raw.githubusercontent.com/shaghayegh-hp/Smishing_Dataset/main/Combined-Labeled-Dataset.csv"
+
+# (optional) two more labelled SMS sets (LABEL = ham/spam/smishing), from Mendeley Data:
+curl -fsSL -o Balanced_10191.csv "https://data.mendeley.com/public-files/datasets/vmg875v4xs/files/f167b0a7-c411-45d4-9cbc-ee06c3b42753/file_downloaded"
+curl -fsSL -o d5971.zip "https://data.mendeley.com/public-files/datasets/f45bkkt8pr/files/edb361de-918d-469f-9106-e84823830665/file_downloaded" \
+  && unzip -o d5971.zip Dataset_5971.csv && mv Dataset_5971.csv Mishra_5971.csv
+
+# (optional) US-only slice of the 2025 crowd-sourced IMC25 smishing set (public user reports).
+# Downloads the 33.9k-row global set, keeps only rows reported on a US network + English text
+# → imc25_us.txt (1,492 msgs, 2019–2023). US-by-construction; used by imc25_us_political_flags.
+curl -fsSL -o imc25.csv "https://raw.githubusercontent.com/reportsmishing/Smishing-Dataset-IMC25/main/dataset/final_dataset_output.csv"
+python3 - <<'PY'
+import csv
+out=[]
+with open('imc25.csv',encoding='utf-8',errors='replace') as f:
+    for r in csv.DictReader(f):
+        if (r.get('original_network_country') or '').strip().upper()!='USA': continue
+        if (r.get('language') or '').strip()!='English': continue
+        t=(r.get('text') or '').replace('\t',' ').replace('\r',' ').replace('\n',' ').strip()
+        if t: out.append(t)
+open('imc25_us.txt','w',encoding='utf-8').write('\n'.join(out))
+print('imc25_us.txt lines:',len(out))
+PY
 ```
+
+### All datasets used by the corpus tests (all real, all fetched-not-vendored, ~106k SMS total)
+| File | Msgs | Labels | Source |
+|---|---|---|---|
+| `SMSSpamCollection` | 5,574 | ham/spam | UCI (Almeida & Gómez Hidalgo) |
+| `Combined-Labeled-Dataset.csv` | 84,863 | spam/smishing flags | shaghayegh-hp/Smishing_Dataset (6 sources merged) |
+| `Balanced_10191.csv` | 10,191 | ham/spam/smishing | Mendeley `vmg875v4xs` (balanced, 2025) |
+| `Mishra_5971.csv` | 5,971 | ham/spam/smishing | Mendeley `f45bkkt8pr` (Mishra & Soni) |
 
 Then:
 

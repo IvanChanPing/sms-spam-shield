@@ -24,3 +24,12 @@ docs/ARCHITECTURE_SPEC.md
 # Test corpus data (fetched, not vendored — see engine/tests/data/README.md)
 engine/tests/data/SMSSpamCollection
 engine/tests/data/Combined-Labeled-Dataset.csv
+engine/tests/data/Balanced_10191.csv
+engine/tests/data/Mishra_5971.csv
+# derived US slices + audit outputs (embed third-party IMC25 text / scraped excerpts —
+# reproducible via engine/tests/data/README.md + tools/recall_audit.py)
+engine/tests/data/imc25_us.txt
+engine/tests/data/winred_live.txt
+engine/tests/data/political_confirmed.txt
+tools/audit_candidates.txt
+tools/audit_noncand_sample.txt
