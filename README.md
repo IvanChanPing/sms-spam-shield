@@ -9,6 +9,11 @@ them. That class defeats every phone-number/domain blocklist on purpose (the num
 too fast to ever land in a reputation database), so Spam Shield catches it by reading the
 **content** — the one thing that actually works for political spam.
 
+**You can also filter with AI.** On top of the offline rules, an optional AI layer lets a model
+read each message and decide — either an **on-device** model (Gemini Nano, private, no key) or a
+**cloud** model you configure — to catch the vaguer spam a fixed rulebook misses. It's opt-in and
+off by default; no model is bundled, so the app never ships gigabytes.
+
 ## Design in one line
 `classify(sender, body) → Verdict{ level, score, reasons[] }` — **flag only, never blocks
 delivery.** The host app decides: badge it, move it to a spam folder, silence it, or offer
